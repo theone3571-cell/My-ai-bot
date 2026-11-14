@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1320">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Personal AI Bot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;700&display=swap">
+<style>
+/* Layout: one-screen chat app. Header, scrolling conversation, composer with a voice orb. Settings slide up as a sheet. */
+:root{
+  --bg:#f3f6fa; --panel:#ffffff; --ink:#0d1b2a; --muted:#5b6b7d; --line:#d9e1ea;
+  --accent:#0a8fa8; --accent-ink:#ffffff; --me:#dff3f7; --bot:#ffffff; --danger:#c43d3d; --ok:#1f9d63;
+  --font:"Noto Sans Thai",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0b1320; --panel:#121d2e; --ink:#e8eef6; --muted:#8fa1b6; --line:#223248;
+  --accent:#4fd1e8; --accent-ink:#06222a; --me:#12384a; --bot:#162338; --danger:#ff7b7b; --ok:#4fd897; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0b1320; --panel:#121d2e; --ink:#e8eef6; --muted:#8fa1b6; --line:#223248;
+  --accent:#4fd1e8; --accent-ink:#06222a; --me:#12384a; --bot:#162338; --danger:#ff7b7b; --ok:#4fd897; color-scheme:dark}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.55;
+  padding-left:max(0px,env(safe-area-inset-left,0px));padding-right:max(0px,env(safe-area-inset-right,0px));overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+.app{height:100%;display:flex;flex-direction:column;max-width:760px;margin:0 auto;padding-top:env(safe-area-inset-top,0px)}
+
+header{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--muted);flex:none}
+.dot.on{background:var(--ok);box-shadow:0 0 0 4px color-mix(in srgb,var(--ok) 25%,transparent)}
+.dot.busy{background:var(--accent)}
+.title{flex:1;min-width:0}
+.title b{display:block;font-size:17px;line-height:1.2}
+.title small{color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.iconbtn{border:1px solid var(--line);background:transparent;border-radius:10px;width:42px;height:42px;display:grid;place-items:center;cursor:pointer}
+.iconbtn:hover{border-color:var(--accent)}
+svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+#log{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth}
+.msg{max-width:86%;padding:9px 13px;border-radius:14px;white-space:pre-wrap;overflow-wrap:anywhere;border:1px solid var(--line)}
+.msg.me{align-self:flex-end;background:var(--me);border-bottom-right-radius:4px}
+.msg.bot{align-self:flex-start;background:var(--bot);border-bottom-left-radius:4px}
+.msg.sys{align-self:center;background:transparent;border:none;color:var(--muted);font-size:13px;text-align:center}
+.msg.err{align-self:center;color:var(--danger);border-color:var(--danger);background:transparent;font-size:14px}
+.msg .tag{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+.empty{margin:auto;text-align:center;color:var(--muted);max-width:30ch}
+.empty b{display:block;color:var(--ink);font-size:18px;margin-bottom:6px}
+
+.composer{padding:10px 16px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);background:var(--panel);display:flex;gap:10px;align-items:flex-end}
+.composer textarea{flex:1;min-width:0;resize:none;max-height:120px;border:1px solid var(--line);background:var(--bg);border-radius:14px;padding:10px 14px;outline:none}
+.composer textarea:focus{border-color:var(--accent)}
+.send{border:none;background:var(--accent);color:var(--accent-ink);border-radius:14px;width:46px;height:46px;display:grid;place-items:center;cursor:pointer;flex:none}
+.send:disabled{opacity:.45}
+.orb{position:relative;border:none;width:46px;height:46px;border-radius:50%;flex:none;cursor:pointer;background:var(--bg);color:var(--ink);border:1px solid var(--line);display:grid;place-items:center}
+.orb::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid var(--accent);opacity:0;transform:scale(var(--lvl,1));transition:transform .08s}
+.orb.live{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.orb.live::after{opacity:.55}
+.orb.speak::after{border-color:var(--ok)}
+
+/* settings sheet */
+.sheet{position:fixed;inset:0;background:rgba(3,8,16,.55);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.sheet>div{background:var(--panel);width:100%;max-width:760px;max-height:92%;overflow-y:auto;border-radius:18px 18px 0 0;
+  padding:16px max(16px,env(safe-area-inset-left,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-right,0px))}
+.sheet h2{margin:0 0 4px;font-size:19px}
+.sheet h3{margin:20px 0 8px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.field{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.field label{font-size:14px;color:var(--muted)}
+.field input,.field select,.field textarea{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:10px 12px;width:100%;min-width:0;outline:none}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent)}
+.field small{color:var(--muted);font-size:13px}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row>*{flex:1;min-width:140px}
+.check{display:flex;gap:10px;align-items:flex-start;margin-bottom:12px}
+.check input{width:20px;height:20px;margin-top:3px;accent-color:var(--accent);flex:none}
+.btn{border:1px solid var(--line);background:transparent;border-radius:10px;padding:10px 14px;cursor:pointer}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:500}
+.btn.warn{color:var(--danger);border-color:var(--danger)}
+.btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+.note{font-size:13px;color:var(--muted)}
+a{color:var(--accent)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <span id="dot" class="dot"></span>
+    <div class="title"><b id="botname">Personal AI Bot</b><small id="status">ยังไม่ได้ตั้งค่า API key</small></div>
+    <button class="iconbtn" id="btnSettings" aria-label="ตั้งค่า"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  </header>
+
+  <div id="log" aria-live="polite"></div>
+
+  <form class="composer" id="form">
+    <button type="button" class="orb" id="orb" aria-label="คุยด้วยเสียง">
+      <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+    </button>
+    <textarea id="input" rows="1" placeholder="พิมพ์ข้อความ…" autocomplete="off"></textarea>
+    <button class="send" id="send" aria-label="ส่ง"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+  </form>
+</div>
+
+<div class="sheet" id="sheet" hidden>
+  <div role="dialog" aria-label="ตั้งค่า">
+    <h2>ตั้งค่า</h2>
+    <p class="note">ทุกอย่างเก็บในเบราว์เซอร์ของเครื่องนี้เท่านั้น API key ถูกส่งไปที่ Google โดยตรงและไม่ผ่านเซิร์ฟเวอร์อื่น</p>
+
+    <h3>เชื่อมต่อ</h3>
+    <div class="field">
+      <label for="s_key">Gemini API key</label>
+      <input id="s_key" type="password" autocomplete="off" placeholder="AIza…">
+      <small>ขอฟรีได้ที่ <a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener">aistudio.google.com/api-keys</a></small>
+    </div>
+    <div class="row">
+      <div class="field"><label for="s_live">โมเดลเสียง (Live)</label><input id="s_live" list="dl_live" autocomplete="off"><datalist id="dl_live"></datalist></div>
+      <div class="field"><label for="s_text">โมเดลข้อความ</label><input id="s_text" list="dl_text" autocomplete="off"><datalist id="dl_text"></datalist></div>
+    </div>
+    <div class="btns">
+      <button type="button" class="btn" id="btnModels">ตรวจ key และโหลดรายชื่อโมเดล</button>
+    </div>
+    <p class="note" id="modelsNote"></p>
+
+    <h3>ผู้ช่วย</h3>
+    <div class="row">
+      <div class="field"><label for="s_name">ชื่อผู้ช่วย</label><input id="s_name" autocomplete="off"></div>
+      <div class="field"><label for="s_user">เรียกคุณว่า</label><input id="s_user" autocomplete="off" placeholder="เช่น พี่เบิร์ด"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label for="s_voice">เสียง</label>
+        <select id="s_voice"></select></div>
+      <div class="field"><label for="s_pol">คำลงท้าย</label>
+        <select id="s_pol"><option value="ครับ">ครับ</option><option value="ค่ะ">ค่ะ</option></select></div>
+    </div>
+    <div class="field"><label for="s_style">นิสัยและวิธีตอบ</label>
+      <textarea id="s_style" rows="3"></textarea></div>
+    <div class="field"><label for="s_mem">สิ่งที่ให้ผู้ช่วยจำเกี่ยวกับคุณ</label>
+      <textarea id="s_mem" rows="4" placeholder="เช่น ทำงานอะไร ชอบอะไร ใช้บอร์ด ESP32 รุ่นไหน"></textarea>
+      <small>ส่งให้ผู้ช่วยทุกครั้งที่เริ่มคุย</small></div>
+
+    <h3>เสียง</h3>
+    <label class="check"><input type="checkbox" id="s_gate"><span>ปิดไมค์ตอน AI กำลังพูด<br><small class="note">ช่วยกันเสียงสะท้อนเมื่อใช้ลำโพงมือถือ ถ้าใช้หูฟังปิดข้อนี้เพื่อพูดแทรกได้</small></span></label>
+    <label class="check"><input type="checkbox" id="s_search"><span>ให้ค้นข้อมูลจาก Google (ข่าว ราคา อากาศ)</span></label>
+
+    <div class="btns">
+      <button type="button" class="btn primary" id="btnSave">บันทึก</button>
+      <button type="button" class="btn" id="btnClose">ปิด</button>
+      <button type="button" class="btn warn" id="btnClear">ล้างบทสนทนา</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+const $=id=>document.getElementById(id);
+const API='https://generativelanguage.googleapis.com/v1beta';
+const VOICES=['Aoede','Puck','Kore','Charon','Fenrir','Leda','Orus','Zephyr'];
+const DEF={key:'',live:'gemini-3.8-live',text:'gemini-3.5-flash-lite',name:'จาวิส',user:'',voice:'Aoede',pol:'ครับ',
+  style:'เป็นกันเอง ตอบสั้นกระชับ ไม่เกิน 3 ประโยคถ้าไม่จำเป็น พูดภาษาไทยเป็นธรรมชาติ',mem:'',gate:true,search:true};
+
+let S=Object.assign({},DEF);
+let history=[];           // {role:'user'|'model', text}
+try{Object.assign(S,JSON.parse(localStorage.getItem('pab.settings')||'{}'))}catch(e){}
+try{history=JSON.parse(localStorage.getItem('pab.history')||'[]')}catch(e){}
+const saveSettings=()=>{try{localStorage.setItem('pab.settings',JSON.stringify(S))}catch(e){}};
+const saveHistory=()=>{try{localStorage.setItem('pab.history',JSON.stringify(history.slice(-80)))}catch(e){}};
+
+/* ---------- UI helpers ---------- */
+const log=$('log');
+function esc(t){return t.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+function fmt(t){return esc(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>')}
+function addMsg(kind,text,tag){
+  const empty=log.querySelector('.empty'); if(empty) empty.remove();
+  const d=document.createElement('div'); d.className='msg '+kind;
+  if(tag){const s=document.createElement('span');s.className='tag';s.textContent=tag;d.appendChild(s)}
+  const b=document.createElement('span'); b.innerHTML=fmt(text); d.appendChild(b);
+  log.appendChild(d); log.scrollTop=log.scrollHeight; d._b=b; d._t=text; return d;
+}
+function setMsgText(d,t){d._t=t;d._b.innerHTML=fmt(t);log.scrollTop=log.scrollHeight}
+function showEmpty(){
+  log.innerHTML='<div class="empty"><b>'+esc(S.name)+' พร้อมแล้ว</b>พิมพ์ข้อความ หรือแตะไมค์เพื่อคุยด้วยเสียง</div>';
+}
+function setStatus(t,state){$('status').textContent=t;$('dot').className='dot'+(state?' '+state:'')}
+function renderHistory(){
+  log.innerHTML='';
+  if(!history.length){showEmpty();return}
+  history.forEach(h=>addMsg(h.role==='user'?'me':'bot',h.text));
+}
+function refreshHeader(){
+  $('botname').textContent=S.name||'Personal AI Bot';
+  document.title=S.name||'Personal AI Bot';
+  if(!S.key) setStatus('ยังไม่ได้ตั้งค่า API key','');
+  else if(!live.on) setStatus('พร้อมใช้งาน','on');
+}
+
+/* ---------- prompt ---------- */
+function systemPrompt(){
+  const now=new Date().toLocaleString('th-TH',{dateStyle:'full',timeStyle:'short'});
+  return `คุณคือ "${S.name}" ผู้ช่วย AI ส่วนตัวที่คุยเป็นภาษาไทย (เข้าใจและตอบภาษาอังกฤษได้ถ้าผู้ใช้พูดอังกฤษ)
+${S.user?`เรียกผู้ใช้ว่า "${S.user}"\n`:''}ลงท้ายประโยคด้วย "${S.pol}" ให้เหมาะกับเสียงที่เลือก รักษาน้ำเสียงเดิมตลอดการสนทนา
+นิสัยและวิธีตอบ: ${S.style}
+ตอบเป็นเสียงพูดธรรมชาติ ไม่ต้องอ่านสัญลักษณ์ markdown ตัวเลขให้พูดอ่านง่าย
+เวลาตอนนี้: ${now}
+${S.mem?`\nสิ่งที่ควรจำเกี่ยวกับผู้ใช้:\n${S.mem}\n`:''}`;
+}
+
+/* ---------- text chat ---------- */
+let sending=false;
+async function sendText(text){
+  if(!S.key){openSettings();return}
+  if(sending) return; sending=true; $('send').disabled=true;
+  history.push({role:'user',text}); addMsg('me',text); saveHistory();
+  const wait=addMsg('sys','กำลังคิด…'); setStatus('กำลังคิด…','busy');
+  try{
+    const body={
+      systemInstruction:{parts:[{text:systemPrompt()}]},
+      contents:history.slice(-30).map(h=>({role:h.role,parts:[{text:h.text}]}))
+    };
+    if(S.search) body.tools=[{googleSearch:{}}];
+    const r=await fetch(`${API}/models/${encodeURIComponent(S.text)}:generateContent`,{
+      method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':S.key},body:JSON.stringify(body)});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(j.error&&j.error.message?j.error.message:('HTTP '+r.status));
+    const parts=(j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[];
+    const out=parts.map(p=>p.text||'').join('').trim()||'(ไม่มีคำตอบ ลองถามใหม่อีกครั้ง)';
+    wait.remove(); history.push({role:'model',text:out}); addMsg('bot',out); saveHistory();
+  }catch(e){
+    wait.remove(); history.pop(); saveHistory();
+    let m=String(e.message||e);
+    if(/not found|404|not supported/i.test(m)) m+='\nลองกด "ตรวจ key และโหลดรายชื่อโมเดล" ในตั้งค่า แล้วเลือกโมเดลข้อความจากรายการ';
+    addMsg('err',m);
+  }finally{sending=false;$('send').disabled=false;refreshHeader()}
+}
+
+/* ---------- live voice ---------- */
+const live={on:false,ws:null,ctx:null,stream:null,node:null,nextT:0,srcs:[],speaking:false,lastOut:0,
+  userBubble:null,botBubble:null,inLvl:0,outLvl:0,wake:null,ready:false};
+
+const WORKLET=`
+class P extends AudioWorkletProcessor{
+ constructor(){super();this.q=[];this.pos=0;this.out=[];this.r=sampleRate/16000;this.e=0;this.n=0}
+ process(inp){
+  const c=inp[0]&&inp[0][0]; if(!c) return true;
+  for(let i=0;i<c.length;i++){this.q.push(c[i]);this.e+=c[i]*c[i]} this.n+=c.length;
+  while(this.pos+1<this.q.length){
+   const i=Math.floor(this.pos),f=this.pos-i;
+   this.out.push(this.q[i]*(1-f)+this.q[i+1]*f); this.pos+=this.r;
+   if(this.out.length>=1280){
+    const b=new Int16Array(1280);
+    for(let k=0;k<1280;k++){const s=Math.max(-1,Math.min(1,this.out[k]));b[k]=s<0?s*32768:s*32767}
+    this.out=[]; this.port.postMessage({pcm:b.buffer,rms:Math.sqrt(this.e/Math.max(1,this.n))},[b.buffer]); this.e=0;this.n=0;
+   }
+  }
+  const d=Math.floor(this.pos); if(d>0){this.q.splice(0,d);this.pos-=d}
+  return true;
+ }}
+registerProcessor('p',P);`;
+
+const b64=buf=>{let s='';const u=new Uint8Array(buf);for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s)};
+const unb64=s=>{const bin=atob(s),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return u.buffer};
+
+async function startLive(){
+  if(!S.key){openSettings();return}
+  if(!navigator.mediaDevices||!window.isSecureContext){
+    addMsg('err','เบราว์เซอร์ไม่อนุญาตให้ใช้ไมค์ในหน้านี้ ต้องเปิดผ่านลิงก์ https:// (เช่น GitHub Pages) ไม่ใช่เปิดไฟล์ในเครื่องโดยตรง');return}
+  setStatus('กำลังเชื่อมต่อ…','busy'); $('orb').classList.add('live');
+  try{
+    live.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1}});
+  }catch(e){addMsg('err','เปิดไมค์ไม่ได้: อนุญาตสิทธิ์ไมค์ให้เว็บนี้ในการตั้งค่า Chrome แล้วลองใหม่');stopLive();return}
+  const AC=window.AudioContext||window.webkitAudioContext;
+  live.ctx=new AC(); await live.ctx.resume();
+  try{
+    const url=URL.createObjectURL(new Blob([WORKLET],{type:'application/javascript'}));
+    await live.ctx.audioWorklet.addModule(url);
+    const src=live.ctx.createMediaStreamSource(live.stream);
+    live.node=new AudioWorkletNode(live.ctx,'p');
+    src.connect(live.node);
+    const mute=live.ctx.createGain(); mute.gain.value=0; live.node.connect(mute); mute.connect(live.ctx.destination);
+    live.node.port.onmessage=ev=>{
+      live.inLvl=Math.min(1,ev.data.rms*8);
+      if(!live.ready||!live.ws||live.ws.readyState!==1) return;
+      if(S.gate&&(live.speaking||performance.now()<live.lastOut+350)) return;
+      live.ws.send(JSON.stringify({realtimeInput:{audio:{mimeType:'audio/pcm;rate=16000',data:b64(ev.data.pcm)}}}));
+    };
+  }catch(e){addMsg('err','เบราว์เซอร์นี้ไม่รองรับ AudioWorklet: '+e.message);stopLive();return}
+
+  const ws=new WebSocket(`wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(S.key)}`);
+  live.ws=ws; live.on=true;
+  ws.onopen=()=>{
+    const setup={model:'models/'+S.live,
+      generationConfig:{responseModalities:['AUDIO'],speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:S.voice}}}},
+      systemInstruction:{parts:[{text:systemPrompt()+'\n\nบทสนทนาก่อนหน้า (สรุปล่าสุด):\n'+history.slice(-8).map(h=>(h.role==='user'?'ผู้ใช้: ':'คุณ: ')+h.text).join('\n')}]},
+      inputAudioTranscription:{},outputAudioTranscription:{}};
+    if(S.search) setup.tools=[{googleSearch:{}}];
+    ws.send(JSON.stringify({setup}));
+  };
+  ws.onmessage=async ev=>{
+    let t=ev.data; if(t instanceof Blob) t=await t.text();
+    let m; try{m=JSON.parse(t)}catch(e){return}
+    onLiveMsg(m);
+  };
+  ws.onerror=()=>{};
+  ws.onclose=ev=>{
+    const was=live.on; const ready=live.ready;
+    stopLive();
+    if(was&&!ready) addMsg('err',`เชื่อมต่อเสียงไม่สำเร็จ (${ev.code}${ev.reason?': '+ev.reason:''})\nตรวจชื่อโมเดลเสียงและ API key ในตั้งค่า`);
+    else if(was) addMsg('sys','จบการคุยด้วยเสียง'+(ev.reason?` (${ev.reason})`:''));
+  };
+  try{live.wake=await navigator.wakeLock.request('screen')}catch(e){}
+  requestAnimationFrame(orbLoop);
+}
+
+function onLiveMsg(m){
+  if(m.setupComplete){live.ready=true;setStatus('กำลังฟัง… พูดได้เลย','on');addMsg('sys','เริ่มคุยด้วยเสียงแล้ว');return}
+  if(m.goAway){addMsg('sys','เซสชันเสียงใกล้หมดเวลา แตะไมค์เพื่อเริ่มใหม่')}
+  const sc=m.serverContent; if(!sc) return;
+  if(sc.interrupted) flushPlayback();
+  if(sc.inputTranscription&&sc.inputTranscription.text){
+    if(live.botBubble) endBot();
+    if(!live.userBubble) live.userBubble=addMsg('me','');
+    setMsgText(live.userBubble,live.userBubble._t+sc.inputTranscription.text);
+  }
+  if(sc.modelTurn&&sc.modelTurn.parts){
+    for(const p of sc.modelTurn.parts){ if(p.inlineData&&p.inlineData.data) playPcm(p.inlineData.data) }
+  }
+  if(sc.outputTranscription&&sc.outputTranscription.text){
+    if(live.userBubble) endUser();
+    if(!live.botBubble) live.botBubble=addMsg('bot','');
+    setMsgText(live.botBubble,live.botBubble._t+sc.outputTranscription.text);
+  }
+  if(sc.turnComplete){endUser();endBot();setStatus('กำลังฟัง… พูดได้เลย','on')}
+}
+function endUser(){if(live.userBubble){const t=live.userBubble._t.trim();if(t){history.push({role:'user',text:t});saveHistory()}else live.userBubble.remove();live.userBubble=null}}
+function endBot(){if(live.botBubble){const t=live.botBubble._t.trim();if(t){history.push({role:'model',text:t});saveHistory()}else live.botBubble.remove();live.botBubble=null}}
+
+function playPcm(b){
+  const ctx=live.ctx; if(!ctx) return;
+  const i16=new Int16Array(unb64(b)); if(!i16.length) return;
+  const f=new Float32Array(i16.length); for(let i=0;i<i16.length;i++) f[i]=i16[i]/32768;
+  const buf=ctx.createBuffer(1,f.length,24000); buf.copyToChannel(f,0);
+  const s=ctx.createBufferSource(); s.buffer=buf;
+  if(!live.an){live.an=ctx.createAnalyser();live.an.fftSize=256;live.an.connect(ctx.destination)}
+  s.connect(live.an);
+  const t=Math.max(ctx.currentTime+0.02,live.nextT); s.start(t); live.nextT=t+buf.duration;
+  live.srcs.push(s); live.speaking=true; setStatus(S.name+' กำลังพูด…','busy'); $('orb').classList.add('speak');
+  s.onended=()=>{live.srcs=live.srcs.filter(x=>x!==s);if(!live.srcs.length){live.speaking=false;live.lastOut=performance.now();$('orb').classList.remove('speak');if(live.on&&live.ready)setStatus('กำลังฟัง… พูดได้เลย','on')}};
+}
+function flushPlayback(){
+  live.srcs.forEach(s=>{s.onended=null;try{s.stop()}catch(e){}});
+  live.srcs=[];live.nextT=0;live.speaking=false;live.lastOut=performance.now();$('orb').classList.remove('speak');
+}
+function orbLoop(){
+  if(!live.on) return;
+  let o=0;
+  if(live.an){const d=new Uint8Array(live.an.frequencyBinCount);live.an.getByteTimeDomainData(d);let m=0;for(const v of d)m=Math.max(m,Math.abs(v-128));o=m/128}
+  const lvl=Math.max(live.inLvl,o);
+  $('orb').style.setProperty('--lvl',(1+lvl*0.45).toFixed(2));
+  requestAnimationFrame(orbLoop);
+}
+function stopLive(){
+  endUser();endBot();
+  live.on=false;live.ready=false;
+  try{live.ws&&live.ws.close()}catch(e){} live.ws=null;
+  flushPlayback();
+  try{live.node&&live.node.disconnect()}catch(e){} live.node=null;
+  try{live.stream&&live.stream.getTracks().forEach(t=>t.stop())}catch(e){} live.stream=null;
+  try{live.ctx&&live.ctx.close()}catch(e){} live.ctx=null; live.an=null;
+  try{live.wake&&live.wake.release()}catch(e){} live.wake=null;
+  $('orb').classList.remove('live','speak'); $('orb').style.removeProperty('--lvl');
+  refreshHeader();
+}
+
+/* ---------- settings ---------- */
+const sheet=$('sheet');
+function fillForm(){
+  $('s_key').value=S.key;$('s_live').value=S.live;$('s_text').value=S.text;$('s_name').value=S.name;$('s_user').value=S.user;
+  $('s_voice').value=S.voice;$('s_pol').value=S.pol;$('s_style').value=S.style;$('s_mem').value=S.mem;
+  $('s_gate').checked=!!S.gate;$('s_search').checked=!!S.search;
+}
+function readForm(){
+  S.key=$('s_key').value.trim();S.live=$('s_live').value.trim()||DEF.live;S.text=$('s_text').value.trim()||DEF.text;
+  S.name=$('s_name').value.trim()||DEF.name;S.user=$('s_user').value.trim();S.voice=$('s_voice').value;S.pol=$('s_pol').value;
+  S.style=$('s_style').value.trim()||DEF.style;S.mem=$('s_mem').value.trim();S.gate=$('s_gate').checked;S.search=$('s_search').checked;
+}
+function openSettings(){fillForm();sheet.hidden=false}
+function closeSettings(){sheet.hidden=true}
+$('s_voice').innerHTML=VOICES.map(v=>`<option>${v}</option>`).join('');
+
+async function loadModels(){
+  const note=$('modelsNote'); const key=$('s_key').value.trim();
+  if(!key){note.textContent='ใส่ API key ก่อน';return}
+  note.textContent='กำลังตรวจ…';
+  try{
+    const r=await fetch(`${API}/models?pageSize=200`,{headers:{'x-goog-api-key':key}});
+    const j=await r.json(); if(!r.ok) throw new Error(j.error&&j.error.message||('HTTP '+r.status));
+    const ms=j.models||[]; const nm=m=>m.name.replace(/^models\//,'');
+    const liveM=ms.filter(m=>(m.supportedGenerationMethods||[]).includes('bidiGenerateContent')).map(nm);
+    const textM=ms.filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent')&&!/embed|image|tts|live|audio|imagen|veo/i.test(m.name)).map(nm);
+    $('dl_live').innerHTML=liveM.map(n=>`<option value="${n}">`).join('');
+    $('dl_text').innerHTML=textM.map(n=>`<option value="${n}">`).join('');
+    note.textContent=`key ใช้ได้ • พบโมเดลเสียง ${liveM.length} ตัว โมเดลข้อความ ${textM.length} ตัว แตะช่องโมเดลเพื่อเลือกจากรายการ`;
+    if(liveM.length&&!liveM.includes($('s_live').value.trim())) note.textContent+=` • ชื่อโมเดลเสียงที่ตั้งไว้ไม่อยู่ในรายการ ลอง: ${liveM[0]}`;
+    if(textM.length&&!textM.includes($('s_text').value.trim())) note.textContent+=` • โมเดลข้อความที่ตั้งไว้ไม่อยู่ในรายการ`;
+  }catch(e){note.textContent='ตรวจไม่ผ่าน: '+e.message}
+}
+
+$('btnSettings').onclick=openSettings;
+$('btnClose').onclick=closeSettings;
+$('btnSave').onclick=()=>{readForm();saveSettings();closeSettings();refreshHeader();if(!history.length)showEmpty()};
+$('btnModels').onclick=loadModels;
+$('btnClear').onclick=()=>{history=[];saveHistory();showEmpty()};
+sheet.addEventListener('click',e=>{if(e.target===sheet)closeSettings()});
+
+$('orb').onclick=()=>{
+  if(live.on){ if(live.speaking){flushPlayback();return} stopLive(); addMsg('sys','จบการคุยด้วยเสียง'); }
+  else startLive();
+};
+const input=$('input');
+input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(120,input.scrollHeight)+'px'});
+input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('form').requestSubmit()}});
+$('form').addEventListener('submit',e=>{
+  e.preventDefault(); const t=input.value.trim(); if(!t) return;
+  input.value='';input.style.height='auto';
+  if(live.on&&live.ready&&live.ws){ // type into the live session
+    history.push({role:'user',text:t});addMsg('me',t);saveHistory();
+    live.ws.send(JSON.stringify({realtimeInput:{text:t}}));
+  } else sendText(t);
+});
+
+fillForm(); renderHistory(); refreshHeader();
+if(!S.key) setTimeout(openSettings,300);
+})();
+</script>
+</body>
+</html>
