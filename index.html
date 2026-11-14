@@ -1,4 +1,4 @@
-<!doctype html>
+
 <html lang="th">
 <head>
 <meta charset="utf-8">
@@ -414,28 +414,4 @@ $('btnSettings').onclick=openSettings;
 $('btnClose').onclick=closeSettings;
 $('btnSave').onclick=()=>{readForm();saveSettings();closeSettings();refreshHeader();if(!history.length)showEmpty()};
 $('btnModels').onclick=loadModels;
-$('btnClear').onclick=()=>{history=[];saveHistory();showEmpty()};
-sheet.addEventListener('click',e=>{if(e.target===sheet)closeSettings()});
-
-$('orb').onclick=()=>{
-  if(live.on){ if(live.speaking){flushPlayback();return} stopLive(); addMsg('sys','จบการคุยด้วยเสียง'); }
-  else startLive();
-};
-const input=$('input');
-input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(120,input.scrollHeight)+'px'});
-input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('form').requestSubmit()}});
-$('form').addEventListener('submit',e=>{
-  e.preventDefault(); const t=input.value.trim(); if(!t) return;
-  input.value='';input.style.height='auto';
-  if(live.on&&live.ready&&live.ws){ // type into the live session
-    history.push({role:'user',text:t});addMsg('me',t);saveHistory();
-    live.ws.send(JSON.stringify({realtimeInput:{text:t}}));
-  } else sendText(t);
-});
-
-fillForm(); renderHistory(); refreshHeader();
-if(!S.key) setTimeout(openSettings,300);
-})();
-</script>
-</body>
-</html>
+$('btnClear').onclick=()=>{history=[];saveHistory
